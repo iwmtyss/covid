@@ -1,4 +1,10 @@
 # 感染症数理モデル
+## Basicモデル
+同質的な個人から構成されるSIRモデルである。
+
+### 新型コロナウイルス感染症と経済学
+[COVID_Basic_JHEA2021.xlsx](COVID_Basic_JHEA2021.xlsx)は、岩本康志(2021)「[新型コロナウイルス感染症と経済学](https://doi.org/10.24742/jhep.2021.10)」『医療経済研究』第33巻第2号、109-133頁で使用されたモデルである。モデルの解説は、別に公開された[付録](https://iwmtyss.com/Docs/2021/ShingataKoronaUirusuKansenshotoKeizaigaku_Appendix.pdf)にある。
+
 ## Age3モデル
 西浦博教授が2020年に開発したSIRモデルを再現したものである。人口を3つの年齢階層に分類していることから、ここではAge3モデルと呼んでいる。
 
