@@ -12,4 +12,7 @@
 [COVID_Age3_2020.xlsm](COVID_Age3_2020.xlsm)は、岩本康志(2023)「[『接触8割削減』の科学的根拠の再現](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2023/2023cj307ab.html)」で使用されたモデルである。モデルの解説は、付録Cにある。
 
 ### なぜ緊急事態宣言は想定以上となったのか：感染症数理モデルの影響
-「[COVID_Age3_2024a.xlsm](COVID_Age3_2024a.xlsm)」は、岩本康志(2024)「[なぜ緊急事態宣言は想定以上となったのか：感染症数理モデルの影響](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2024/2024cj309ab.html)」で使用されたモデルである。モデルの解説は、付録Bにある。
+[COVID_Age3_2024a.xlsm](COVID_Age3_2024a.xlsm)は、岩本康志(2024)「[なぜ緊急事態宣言は想定以上となったのか：感染症数理モデルの影響](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2024/2024cj309ab.html)」で使用されたモデルである。モデルの解説は、付録Bにある。
+
+### コロナ対策の政策評価
+[COVID_Age3_2025a.xlsm](COVID_Age3_2025a.xlsm)、[COVID_Age3_2025b.xlsm](COVID_Age3_2025b.xlsm)は、岩本康志(2025)『コロナ対策の政策評価』（慶応義塾大学出版会）で使用されたモデルである。モデルの解説は、[ここ](COVID_Age3_2025ab_Note.pdf)にある。
