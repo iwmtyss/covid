@@ -16,3 +16,9 @@
 
 ### コロナ対策の政策評価
 [COVID_Age3_2025a.xlsm](COVID_Age3_2025a.xlsm)、[COVID_Age3_2025b.xlsm](COVID_Age3_2025b.xlsm)は、岩本康志(2025)『コロナ対策の政策評価』（慶応義塾大学出版会）で使用されたモデルである。モデルの解説は、[ここ](COVID_Age3_2025ab_Note.pdf)にある。
+
+### 「接触8割削減」の科学的根拠の再現（再検討）
+[COVID_Age3_2020_results.qmd](COVID_Age3_2020_results.qmd)は、岩本康志(2026)「[『接触8割削減』の科学的根拠の再現（再検討）](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2026/2026cj315ab.html)」で使用されたモデルである。モデルの解説は、付録Cにある。モデルの出力は、[ここ](https://iwmtyss.com/Books/2025-1/COVID_Age3_2020_results.html)にある。
+
+### 「接触8割削減」の科学的根拠（改訂版）
+[COVID_Age3_2020_results2.qmd](COVID_Age3_2020_results2.qmd)は、岩本康志(2026)「[『接触8割削減』の科学的根拠（改訂版）]([https://www.cirje.e.u-tokyo.ac.jp/research/dp/2026/2023cj315ab.htm](https://iwmtyss.com/Books/2025-1/chap1_rev.html)」で使用されたモデルである。モデルの解説は、岩本康志(2026)「[『接触8割削減』の科学的根拠の再現（再検討）](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2026/2026cj315ab.html)」の付録Cにある。モデルの出力は、[ここ](https://iwmtyss.com/Books/2025-1/COVID_Age3_2020_results2.html)にある。
