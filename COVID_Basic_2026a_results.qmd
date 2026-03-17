@@ -1,0 +1,520 @@
+---
+title: "接触削減シミュレーションの方法"
+author: "岩本康志"
+date: 2026-03-17
+format: html
+editor: visual
+execute: 
+  echo: false
+  message: false
+  warning: false
+---
+
+```{r}
+# Basic SIR model
+# COVID_Basic_2026a
+
+library(tidyverse)
+library(deSolve)
+
+# ---- 0. 設定 ----
+# 時間と計算方法の設定
+set_control <- function(time_begin = 0, time_end, increment = 0.1,
+                        method = "rk4") {
+  times <- seq(time_begin, time_end, by = increment)
+  list(
+    time_begin = time_begin, time_end = time_end,
+    increment = increment, times = times, method = method
+  )
+}
+
+# 人口の設定
+set_population <- function(N0 = 1, I0 = 10e-6,
+                           contact_matrix = NULL, susceptibility = NULL) {
+  dimens <- length(N0)
+  if (is.null(names(N0))) {
+    if (dimens == 1) {
+      names(N0) <- "all"
+    } else {
+      names(N0) <- as.character(seq(1:dimens))
+    }
+  }
+  if (is.null(susceptibility)) {
+    susceptibility <- rep(1, times = dimens)
+  }
+  if (is.null(contact_matrix)) {
+    contact_matrix <- matrix(N0, nrow = dimens, ncol = dimens)
+  }
+  
+  contact_matrix <- susceptibility * contact_matrix
+  eigen <- max(Re(eigen(contact_matrix)$values))
+  contact_matrix <- contact_matrix / eigen
+  Zeros <- rep(0, times = dimens)
+  
+  initial_conditions <- I0
+  
+  list(
+    contact_matrix = contact_matrix,
+    demography_vector = N0,
+    initial_conditions = initial_conditions,
+    susceptibility = susceptibility,
+    dimens = dimens
+  )
+}
+
+# 疫学パラメータの設定
+set_parms <- function(compartment, r0 = 2.5,
+                      gamma = 1 / 4.8, epsilon = 1 / 5) {
+  beta0 <- gamma * r0
+  
+  if (compartment == "SIR") {
+    list(
+      compartment = compartment,
+      beta0 = beta0, gamma = gamma
+    )
+  } else if (compartment == "SEIR") {
+    list(
+      compartment = compartment,
+      beta0 = beta0, gamma = gamma, epsilon = epsilon
+    )
+  }
+}
+
+# 介入の設定
+set_intervention <- function(time_begin = control$time_begin,
+                             time_end = control$time_end,
+                             reduction = 0) {
+  list(time_begin = time_begin, time_end = time_end, reduction = reduction)
+}
+
+# ファクターXの設定
+set_input <- function(population, intervention, control) {
+  
+  set_reduction_list <- function(intervention, times, increment, dimens) {
+    with(intervention, {
+      times_begin <- as.integer(time_begin / increment) + 1L
+      times_end <- as.integer(time_end / increment)
+      x <- matrix(0, nrow = dimens, ncol = length(times))
+      x[, (times_begin + 1L):(times_end + 1L)] <- reduction
+      x
+    })
+  }
+  
+  if (is.null(intervention)) {
+    reduction_combined <- matrix(0, nrow = population$dimens, ncol = length(control$times))
+  } else {
+    reduction_list <- map(
+      intervention,
+      \(x) set_reduction_list(x, control$times, control$increment, population$dimens)
+    )
+    reduction_combined <- reduce(reduction_list, `+`)
+  }
+  Ones <- matrix(1, nrow = length(control$times), ncol = population$dimens)
+  X <- Ones - t(reduction_combined)
+  colnames(X) <- names(population$demography_vector)
+  X
+}
+
+# SIRモデルの解を求める
+model_sir <- function(scenario = "default", aggr = FALSE) {
+  
+  func_sir <- function(t, y, parms, input_list, population) {
+    with(c(parms, population), {
+      S <- y[1:dimens]
+      I <- y[(dimens + 1):(2L * dimens)]
+      R <- y[(2L * dimens + 1):(3L * dimens)]
+      
+      beta <- beta0 * map_vec(input_list, \(f) f(t))
+      J <- contact_matrix %*% I
+      New <- beta * (S / demography_vector) * J
+      
+      dS <- -New
+      dI <- New - gamma * I
+      dR <- gamma * I
+      
+      list(c(dS, dI, dR))
+    })
+  }
+  
+  Zeros <- rep(0, times = population$dimens)
+  population$initial_conditions <- c(
+    S = population$demography_vector - population$initial_conditions,
+    I = population$initial_conditions,
+    R = Zeros
+  )
+  X <- set_input(population, intervention, control)
+  input_list <- map(names(population$demography_vector), \(name) approxfun(control$times, X[, name], rule = 2))
+  
+  out <- ode(
+    y = population$initial_conditions,
+    times = control$times,
+    func = func_sir,
+    parms = parms,
+    method = control$method,
+    input_list = input_list,
+    population = population
+  )
+  
+  S <- out[, 2:(population$dimens + 1)]
+  I <- out[, (population$dimens + 2):(2L * population$dimens + 1)]
+  R <- out[, (2L * population$dimens + 2):(3L * population$dimens + 1)]
+  
+  beta <- parms$beta0 * t(X)
+  J <- population$contact_matrix %*% t(I)
+  S_N <- t(S) / population$demography_vector
+  New <- t((beta * S_N) * J)
+  
+  out_df <- cbind(out[, 1], S, I, R, New)
+  colnames(out_df) <- c(
+    "times",
+    str_c("S_", names(population$demography_vector)),
+    str_c("I_", names(population$demography_vector)),
+    str_c("R_", names(population$demography_vector)),
+    str_c("New_", names(population$demography_vector))
+  )
+  out_df <- as_tibble(out_df) |>
+    pivot_longer(cols = -times, names_to = "names", values_to = "value") |>
+    separate(col = names, into = c("compartment", "demography_group"), sep = "_") |>
+    pivot_wider(names_from = compartment, values_from = value) |>
+    mutate(scenario = scenario)
+  if (aggr == TRUE) {
+    out_df <- out_df |>
+      group_by(times) |>
+      summarize(S = sum(S), I = sum(I), R = sum(R), New = sum(New)) |>
+      mutate(scenario = scenario)
+  }
+  out_df
+}
+
+# SEIRモデルの解を求める
+model_seir <- function(scenario = "default", aggr = FALSE) {
+  
+  func_seir <- function(t, y, parms, input_list, population) {
+    with(c(parms, population), {
+      S <- y[1:dimens]
+      E <- y[(dimens + 1):(2L * dimens)]
+      I <- y[(2L * dimens + 1):(3L * dimens)]
+      R <- y[(3L * dimens + 1):(4L * dimens)]
+      
+      beta <- beta0 * map_vec(input_list, \(f) f(t))
+      J <- contact_matrix %*% I
+      New <- beta * (S / demography_vector) * J
+      
+      dS <- -New
+      dE <- New - epsilon * E
+      dI <- epsilon * E - gamma * I
+      dR <- gamma * I
+      
+      list(c(dS, dE, dI, dR))
+    })
+  }
+  
+  Zeros <- rep(0, times = population$dimens)
+  population$initial_conditions <- c(
+    S = population$demography_vector - population$initial_conditions,
+    E = Zeros,
+    I = population$initial_conditions,
+    R = Zeros
+  )
+  X <- set_input(population, intervention, control)
+  input_list <- map(names(population$demography_vector), \(name) approxfun(control$times, X[, name], rule = 2))
+  
+  out <- ode(
+    y = population$initial_conditions,
+    times = control$times,
+    func = func_seir,
+    parms = parms,
+    method = control$method,
+    input_list = input_list,
+    population = population
+  )
+  
+  S <- out[, 2:(population$dimens + 1)]
+  E <- out[, (population$dimens + 2):(2L * population$dimens + 1)]
+  I <- out[, (2L * population$dimens + 2):(3L * population$dimens + 1)]
+  R <- out[, (3L * population$dimens + 2):(4L * population$dimens + 1)]
+  
+  beta <- parms$beta0 * t(X)
+  J <- population$contact_matrix %*% t(I)
+  S_N <- t(S) / population$demography_vector
+  New <- t((beta * S_N) * J)
+  
+  out_df <- cbind(out[, 1], S, E, I, R, New)
+  colnames(out_df) <- c(
+    "times",
+    str_c("S_", names(population$demography_vector)),
+    str_c("E_", names(population$demography_vector)),
+    str_c("I_", names(population$demography_vector)),
+    str_c("R_", names(population$demography_vector)),
+    str_c("New_", names(population$demography_vector))
+  )
+  out_df <- as_tibble(out_df) |>
+    pivot_longer(cols = -times, names_to = "names", values_to = "value") |>
+    separate(col = names, into = c("compartment", "demography_group"), sep = "_") |>
+    pivot_wider(names_from = compartment, values_from = value) |>
+    mutate(scenario = scenario)
+  if (aggr == TRUE) {
+    out_df <- out_df |>
+      group_by(times) |>
+      summarize(S = sum(S), E = sum(E), I = sum(I), R = sum(R), New = sum(New)) |>
+      mutate(scenario = scenario)
+  }
+  out_df
+}
+
+# 新規感染者数のグラフ
+plot_New <- function(data, variable, title = "") {
+  ggplot(data, aes(x = times)) +
+    geom_line(aes(y = New, colour = scenario)) +
+    labs(
+      title = title, x = "流行時刻（日）", y = "新規感染者数（人/日）",
+      colour = ""
+    ) +
+    theme_classic() +
+    theme(legend.position = "inside", legend.position.inside = c(0.8, 0.7))
+}
+
+# 感染者数のグラフ
+plot_I <- function(data, variable, title = "") {
+  ggplot(data, aes(x = times)) +
+    geom_line(aes(y = I, colour = scenario)) +
+    labs(
+      title = title, x = "流行時刻（日）", y = "感染者数（人）",
+      colour = ""
+    ) +
+    theme_classic() +
+    theme(legend.position = "inside", legend.position.inside = c(0.8, 0.7))
+}
+```
+
+# 6. モデルF
+
+## 図1 接触削減がない場合の感染症の流行
+
+```{r}
+# ---- 6. モデルF ----
+# 鈴木・西浦(2020b)の再現
+control <- set_control(time_end = 130)
+population <- set_population(N0 = 100000, I0 = 1)
+intervention <- NULL
+
+# 鈴木・西浦(2020b、図4）
+## シナリオ19
+parms <- set_parms(compartment = "SIR", r0 = 3.5)
+result_19 <- model_sir(scenario = "R0 = 3.5")
+
+## シナリオ20
+parms <- set_parms(compartment = "SIR")
+result_20 <- model_sir(scenario = "R0 = 2.5")
+
+## シナリオ21
+parms <- set_parms(compartment = "SIR", r0 = 1.5)
+result_21 <- model_sir(scenario = "R0 = 1.5")
+
+# 図1
+## 全体のグラフ
+result_20 |>
+  pivot_longer(cols = c(S, I, R),
+               names_to = "compartment",
+               values_to = "value") |>
+  ggplot(aes(x = times, y = value, colour = compartment)) +
+  geom_line() +
+  labs(
+    title = "", x = "流行時刻（日）", y = "感染者数等（人）", colour = "") +
+  theme_classic() +
+  theme(legend.position = "inside", legend.position.inside = c(0.8, 0.5)) +
+  scale_x_continuous(limits = c(0, 130), breaks = seq(0, 130, 20)) +
+  scale_y_continuous(limits = c(0, 100000), breaks = seq(0, 100000, 25000)) +
+  scale_colour_discrete(limits = c("S", "I", "R"),
+                        labels = c("未感染者", "感染者", "回復・死亡者"))
+```
+
+## 図2 基本再生産数と感染症の流行
+
+```{r}
+# 図2
+## 感染者数のグラフ
+rbind(result_19, result_20, result_21) |>
+  plot_I() +
+  scale_x_continuous(limits = c(0, 130), breaks = seq(0, 130, 20)) +
+  scale_y_continuous(limits = c(0, 40000), breaks = seq(0, 40000, 5000)) +
+  scale_colour_discrete(limits = c("R0 = 3.5", "R0 = 2.5", "R0 = 1.5"))
+
+## 新規感染者数のグラフ
+rbind(result_19, result_20, result_21) |>
+  plot_New() +
+  scale_x_continuous(limits = c(0, 130), breaks = seq(0, 130, 20)) +
+  scale_y_continuous(limits = c(0, 15000), breaks = seq(0, 15000, 5000)) +
+  scale_colour_discrete(limits = c("R0 = 3.5", "R0 = 2.5", "R0 = 1.5"))
+```
+
+## 図3 接触削減（20日目開始）のもとでの新規感染者数の推移
+
+```{r}
+# 図3（A）
+plot_I2 <- function(df) {
+  plot_I(df) +
+    scale_x_continuous(limits = c(0, 130), breaks = seq(0, 120, 20)) +
+    scale_y_continuous(limits = c(0, 25000), breaks = seq(0, 25000, 5000)) +
+    scale_colour_discrete(
+      limits = c("R0 = 2.5", "2割削減", "4割削減", "6割削減", "8割削減"),
+      labels = c("削減なし", "2割削減", "4割削減", "6割削減", "8割削減")
+    )
+}
+
+plot_New2 <- function(df) {
+  plot_New(df) +
+    scale_x_continuous(limits = c(0, 130), breaks = seq(0, 120, 20)) +
+    scale_y_continuous(limits = c(0, 7000), breaks = seq(0, 7000, 1000)) +
+    scale_colour_discrete(
+      limits = c("R0 = 2.5", "2割削減", "4割削減", "6割削減", "8割削減"),
+      labels = c("削減なし", "2割削減", "4割削減", "6割削減", "8割削減")
+    )
+}
+
+parms <- set_parms(compartment = "SIR")
+
+## シナリオ22
+intervention <- list(set_intervention(time_begin = 20, time_end = 34, reduction = 0.2))
+result_22 <- model_sir(scenario = "2割削減")
+
+## シナリオ23
+intervention <- list(set_intervention(time_begin = 20, time_end = 34, reduction = 0.4))
+result_23 <- model_sir(scenario = "4割削減")
+
+## シナリオ24
+intervention <- list(set_intervention(time_begin = 20, time_end = 34, reduction = 0.6))
+result_24 <- model_sir(scenario = "6割削減")
+
+## シナリオ25
+intervention <- list(set_intervention(time_begin = 20, time_end = 34, reduction = 0.8))
+result_25 <- model_sir(scenario = "8割削減")
+
+# 感染者数のグラフ
+rbind(result_20, result_22, result_23, result_24, result_25) |>
+  plot_I2()
+
+# 新規感染者数のグラフ
+rbind(result_20, result_22, result_23, result_24, result_25) |>
+  plot_New2()
+  
+# 図3（B）
+## シナリオ26
+intervention <- list(set_intervention(time_begin = 20, time_end = 50, reduction = 0.2))
+result_26 <- model_sir(scenario = "2割削減")
+
+## シナリオ27
+intervention <- list(set_intervention(time_begin = 20, time_end = 50, reduction = 0.4))
+result_27 <- model_sir(scenario = "4割削減")
+
+## シナリオ28
+intervention <- list(set_intervention(time_begin = 20, time_end = 50, reduction = 0.6))
+result_28 <- model_sir(scenario = "6割削減")
+
+## シナリオ29
+intervention <- list(set_intervention(time_begin = 20, time_end = 50, reduction = 0.8))
+result_29 <- model_sir(scenario = "8割削減")
+
+# 感染者数のグラフ
+rbind(result_20, result_26, result_27, result_28, result_29) |>
+  plot_I2()
+  
+# 新規感染者数のグラフ
+rbind(result_20, result_26, result_27, result_28, result_29) |>
+  plot_New2()
+```
+
+## 図4 接触削減（30日目開始）のもとでの新規感染者数の推移
+
+```{r}
+# 図4（A）
+## シナリオ30
+intervention <- list(set_intervention(time_begin = 30, time_end = 44, reduction = 0.2))
+result_30 <- model_sir(scenario = "2割削減")
+
+## シナリオ31
+intervention <- list(set_intervention(time_begin = 30, time_end = 44, reduction = 0.4))
+result_31 <- model_sir(scenario = "4割削減")
+
+## シナリオ32
+intervention <- list(set_intervention(time_begin = 30, time_end = 44, reduction = 0.6))
+result_32 <- model_sir(scenario = "6割削減")
+
+## シナリオ33
+intervention <- list(set_intervention(time_begin = 30, time_end = 44, reduction = 0.8))
+result_33 <- model_sir(scenario = "8割削減")
+
+# 感染者数のグラフ
+rbind(result_20, result_30, result_31, result_32, result_33) |>
+  plot_I2()
+  
+# 新規感染者数のグラフ
+rbind(result_20, result_30, result_31, result_32, result_33) |>
+  plot_New2()
+  
+# 図4（B）
+## シナリオ34
+intervention <- list(set_intervention(time_begin = 30, time_end = 60, reduction = 0.2))
+result_34 <- model_sir(scenario = "2割削減")
+
+## シナリオ35
+intervention <- list(set_intervention(time_begin = 30, time_end = 60, reduction = 0.4))
+result_35 <- model_sir(scenario = "4割削減")
+
+## シナリオ36
+intervention <- list(set_intervention(time_begin = 30, time_end = 60, reduction = 0.6))
+result_36 <- model_sir(scenario = "6割削減")
+
+## シナリオ37
+intervention <- list(set_intervention(time_begin = 30, time_end = 60, reduction = 0.8))
+result_37 <- model_sir(scenario = "8割削減")
+
+# 感染者数のグラフ
+rbind(result_20, result_34, result_35, result_36, result_37) |>
+  plot_I2()
+  
+# 新規感染者数のグラフ
+rbind(result_20, result_34, result_35, result_36, result_37) |>
+  plot_New2()
+```
+
+## 図5 接触削減（30日目開始）のもとでの累積感染者数の推移
+
+```{r}
+# 図5
+## 累積感染者数のグラフ
+plot_CumNew <- function(data, variable, title = "") {
+  ggplot(data, aes(x = times)) +
+    geom_line(aes(y = I + R, colour = scenario)) +
+    scale_x_continuous(limits = c(0, 130), breaks = seq(0, 120, 20)) +
+    scale_y_continuous(limits = c(0, 90000), breaks = seq(0, 80000, 20000)) +
+    scale_colour_discrete(
+      limits = c("R0 = 2.5", "2割削減", "4割削減", "6割削減", "8割削減"),
+      labels = c("削減なし", "2割削減", "4割削減", "6割削減", "8割削減")
+    ) +
+    labs(
+      title = title, x = "流行時刻（日）", y = "累積感染者数（人）",
+      colour = ""
+    ) +
+    theme_classic() +
+    theme(legend.position = "inside", legend.position.inside = c(0.8, 0.5))
+}
+
+rbind(result_20, result_30, result_31, result_32, result_33) |>
+  plot_CumNew()
+
+rbind(result_20, result_34, result_35, result_36, result_37) |>
+  plot_CumNew()
+```
+
+## 図B.1 接触削減（20日目開始）のもとでの累積感染者数の推移
+
+```{r}
+# 図B.1
+## 累積感染者数のグラフ
+rbind(result_20, result_22, result_23, result_24, result_25) |>
+  plot_CumNew()
+
+rbind(result_20, result_26, result_27, result_28, result_29) |>
+  plot_CumNew()
+```
