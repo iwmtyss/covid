@@ -5,6 +5,9 @@
 ### 新型コロナウイルス感染症と経済学
 [COVID_Basic_JHEA2021.xlsx](COVID_Basic_JHEA2021.xlsx)は、岩本康志(2021)「[新型コロナウイルス感染症と経済学](https://doi.org/10.24742/jhep.2021.10)」『医療経済研究』第33巻第2号、109-133頁で使用されたモデルである。モデルの解説は、別に公開された[付録](https://iwmtyss.com/Docs/2021/ShingataKoronaUirusuKansenshotoKeizaigaku_Appendix.pdf)にある。
 
+### 接触削減シミュレーションの方法
+[COVID_Basic_2026a.qmd](COVID_Basic_2026a.qmd)は、岩本康志(2026)「[接触削減シミュレーションの方法](https://iwmtyss.com/Docs/2026/SesshokuSakugenSimyureshonnoHoho.pdf)」で使用されたモデルである。モデルの解説は、岩本康志(2026)「[『接触8割削減』の科学的根拠の再現（再検討）](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2026/2026cj315ab.html)」の付録Cにある。モデルの出力は、[ここ](https://iwmtyss.com/Docs/2026/COVID_Basic_2026a_results.html)にある。
+
 ## Age3モデル
 西浦博教授が2020年に開発したSIRモデルを再現したものである。人口を3つの年齢階層に分類していることから、ここではAge3モデルと呼んでいる。
 
