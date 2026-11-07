@@ -1,0 +1,232 @@
+---
+title: "なぜ緊急事態措置は想定以上となったのか（２）：流行最終規模の推計の影響について"
+author: "岩本康志"
+date: 2026-11-06
+format: html
+editor: visual
+execute:
+  echo: false
+  message: false
+  warning: false
+---
+
+# 3.2節
+
+## 表2 流行最終規模のシミュレーション
+
+「本稿はまず幅をもたせて、異質感受性モデルの変動係数の自乗は同質的なモデルである0から2.5までの値を設定する。ネットワークモデルの変動係数の自乗は、その半分となる。基本再生産数は新型インフルエンザに関するWHOガイドラインに沿った1.5とCOVID-19の被害想定で用いられた2.5を設定している。
+
+表2は、シミュレーションの結果である。初期の感染者数を岩本(2026)に沿って、人口の10万分の1と置いている。300日まで計算し、計算終期の回復者・死亡者数の対人口比を流行最終規模とした。流行最終規模は、変動係数の自乗が1.75のとき、基本再生産数が1.5で流行最終規模が25.1%と、WHOガイドラインと整合的な値となる。基本再生産数が2.5のときは、流行最終規模は47.3%となる。」
+
+```{r}
+# Heterogeneous SIR model
+# COVID_Basic_2026b
+
+library(deSolve)
+
+# ---- 0. 設定 ----
+# 時間と計算方法の設定
+time_begin <- 0
+time_end <- 300
+increment <- 0.1
+times <- seq(time_begin, time_end, by = increment)
+l_times <- length(times)
+method <- "rk4"
+
+# 人口の設定
+N0_jp <- c(c = 15758424, a = 76499828, e = 35185241)
+N_all <- sum(N0_jp)
+N0 <- 100000
+I0 <- 10 * (N0 / N_all)
+S0 <- N0 - I0
+R0 <- N0 - S0 - I0
+y <- c(S = S0, I = I0, R = R0)
+
+# 疫学パラメータの設定
+set_parms <- function(
+  r0 = 2.5, # 基本再生産数
+  gamma = 1 / 4.8, # 1/世代時間
+  heterogeneity = 1.75 # 変動係数の自乗
+) {
+  list(r0 = r0, gamma = gamma, heterogeneity = heterogeneity)
+}
+
+# SIRモデルの解を求める
+model_sir <- function() {
+  func_sir <- function(t, y, parms, N) {
+    with(c(as.list(y), parms), {
+      New <- r0 * gamma * ((S / N)^(1 + heterogeneity)) * I
+
+      dS <- -New
+      dI <- New - gamma * I
+      dR <- gamma * I
+
+      list(c(dS, dI, dR))
+    })
+  }
+
+  as.data.frame(ode(
+    y = y,
+    times = times,
+    func = func_sir,
+    parms = parms,
+    method = method,
+    N = N0
+  ))
+}
+
+final_size <- function(df) {
+  EFS <- df$R[l_times] / N0
+  HIT <- 1 - df$S[which.max(df$I)] / N0
+  c(r0 = parms$r0, CV2 = parms$heterogeneity, EFS = EFS, HIT = HIT)
+}
+
+# ---- 1. 流行最終規模の計算 ----
+# 論文・付録Cに記載した、1組のパラメータを計算するコード
+# parms <- set_parms()
+# result01 <- final_size(model_sir())
+
+# ---- 2. 表2の計算 ----
+#論文・表2を計算するためのコード
+library(tidyverse)
+library(gt)
+
+results <- data.frame(NULL)
+r0_range <- c(1.5, 2.5)
+heterogeneity_range <- c(0, 1, 1.5, 1.75, 2, 2.5)
+for (r0 in r0_range) {
+  for (heterogeneity in heterogeneity_range) {
+    parms <- set_parms(r0 = r0, heterogeneity = heterogeneity)
+    out <- final_size(model_sir())
+    results <- rbind(results, out)
+  }
+}
+colnames(results) <- c("r0", "CV2", "EFS", "HIT")
+results <- results |>
+  mutate(CV2_net = CV2 / 2) |>
+  mutate(EFS = EFS * 100) |>
+  mutate(HIT = HIT * 100) |>
+  pivot_wider(names_from = r0, values_from = c(EFS, HIT))
+
+gt_tbl <- gt(results) |>
+  tab_header(title = "表2　流行最終規模のシミュレーション") |>
+  tab_source_note(
+    source_note = "論文掲載の数値に加えて、集団免疫閾値を報告している。"
+  ) |>
+  tab_source_note(
+    source_note = "異質感受性モデルで変動係数の自乗を0（同質的モデル）から2.5
+    まで変化させたときの流行最終規模（対人口比、%）を示す。ネットワークモデル
+    の変動係数の自乗は、異質感受性モデルの半分の値となる。3列目は基本再生産数
+    が1.5、4列目は2.5の場合である。"
+  ) |>
+  tab_spanner(
+    label = "変動係数の自乗",
+    columns = c(CV2, CV2_net)
+  ) |>
+  tab_spanner(
+    label = "流行最終規模",
+    columns = c(EFS_1.5, EFS_2.5)
+  ) |>
+  tab_spanner(
+    label = "集団免疫閾値",
+    columns = c(HIT_1.5, HIT_2.5)
+  ) |>
+  cols_label(
+    CV2 = "異質感受性モデル",
+    CV2_net = "ネットワークモデル",
+    ends_with("1.5") ~ "1.5",
+    ends_with("2.5") ~ "2.5"
+  ) |>
+  fmt_number(columns = c(EFS_1.5, EFS_2.5, HIT_1.5, HIT_2.5), decimals = 1)
+gt_tbl
+```
+
+## 図1　感染者数（人口10万人あたり）の推移
+
+「病床整備の観点で重症なピークの感染者数は、年齢構造化モデルではシミュレーション開始の53日目に人口の20.7%、WHOガイドラインに相当する流行最終規模をもつネットワークで同日に人口の11.1%となる。シミュレーション全体の感染者数の推移は、図1のようになる。」
+
+```{r}
+# ---- 3. 図1の計算 ----
+# 論文・図1を計算するためのコード
+# 感染者数のグラフ
+plot_I <- function(data, variable, title = "") {
+  ggplot(data, aes(x = time)) +
+    geom_line(aes(y = I, colour = scenario)) +
+    labs(
+      title = title,
+      x = "流行時刻（日）",
+      y = "10万人あたり感染者数（人）",
+      colour = ""
+    ) +
+    theme_classic() +
+    theme(legend.position = "inside", legend.position.inside = c(0.8, 0.7))
+}
+
+# 新規感染者数のグラフ
+plot_New <- function(data, variable, title = "") {
+  ggplot(data, aes(x = time)) +
+    geom_line(aes(y = New, colour = scenario)) +
+    labs(
+      title = title,
+      x = "流行時刻（日）",
+      y = "10万人あたり新規感染者数（人/日）",
+      colour = ""
+    ) +
+    theme_classic() +
+    theme(legend.position = "inside", legend.position.inside = c(0.8, 0.7))
+}
+
+# シナリオ1　年齢構造化モデル
+result_01 <- read_csv("COVID_Age3_2020_result_01.csv") |>
+  pivot_wider(
+    names_from = demography_group,
+    values_from = c(S, I, R, New, New_per100k, severe_per100k)
+  ) |>
+  mutate(time = times) |>
+  mutate(I = (I_c + I_a + I_e) * N0 / N_all) |>
+  mutate(New = (New_c + New_a + New_e) * N0 / N_all) |>
+  select(time, I, New, scenario)
+
+paste(
+  "年齢構造化モデルでのピークは、",
+  result_01$time[which.max(result_01$I)],
+  "日で、そのときの感染者数（人口10万人あたり）は、",
+  max(result_01$I),
+  "人"
+)
+
+# シナリオ2　WHOガイドラインに符合するネットワークモデル
+parms <- set_parms(r0 = 2.5, heterogeneity = 1.5)
+result_02 <- model_sir() |>
+  mutate(New = r0 * parms$gamma * (S / N0) * I) |>
+  mutate(scenario = "result_02") |>
+  select(time, I, New, scenario)
+paste(
+  "WHOガイドラインに符合するネットワークモデルでのピークは、",
+  result_02$time[which.max(result_01$I)],
+  "日で、そのときの感染者数（人口10万人あたり）は、",
+  max(result_02$I),
+  "人"
+)
+
+## 感染者数のグラフ
+rbind(result_01, result_02) |>
+  plot_I(title = "") +
+  scale_x_continuous(limits = c(0, 90), breaks = seq(0, 90, 10)) +
+  scale_y_continuous(limits = c(0, 22000), breaks = seq(0, 22000, 5000)) +
+  scale_colour_manual(
+    labels = c("年齢構造化モデル", "ネットワークモデル"),
+    values = c("blue", "grey")
+  )
+
+## 新規感染者数のグラフ
+rbind(result_01, result_02) |>
+  plot_New(title = "") +
+  scale_x_continuous(limits = c(0, 90), breaks = seq(0, 90, 10)) +
+  scale_y_continuous(limits = c(0, 6000), breaks = seq(0, 6000, 2000)) +
+  scale_colour_manual(
+    labels = c("年齢構造化モデル", "ネットワークモデル"),
+    values = c("blue", "grey")
+  )
+```
+
