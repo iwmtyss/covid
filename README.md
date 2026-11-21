@@ -8,6 +8,9 @@
 ### 接触削減シミュレーションの方法
 [COVID_Basic_2026a_results.qmd](COVID_Basic_2026a_results.qmd)は、岩本康志(2026)「[接触削減シミュレーションの方法](https://iwmtyss.com/Docs/2026/SesshokuSakugenSimyureshonnoHoho.pdf)」で使用されたモデルである。モデルの解説は、岩本康志(2026)「[『接触8割削減』の科学的根拠の再現（再検討）](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2026/2026cj315ab.html)」の付録Cにある。モデルの出力は、[ここ](https://iwmtyss.com/Docs/2026/COVID_Basic_2026a_results.html)にある。
 
+### なぜ緊急事態宣言は想定以上となったのか（2）：流行最終規模の推計の影響
+[COVID_Basic_2026b_results.qmd](COVID_Basic_2026b_results.qmd)は、岩本康志(2026)「[なぜ緊急事態措置は想定以上となったのか（２）：流行最終規模の推計の影響について](https://www.cirje.e.u-tokyo.ac.jp/research/dp/2026/2026cj319ab.html)」で使用されたモデルである。「『接触8割削減』の科学的根拠（改訂版）」のシナリオ1の結果[result_01](COVID_Age3_2020_result_01.csv)を使用している。モデルの出力は、[ここ](https://iwmtyss.com/Docs/2026/COVID_Basic_2026b_results.html)にある。
+
 ## Age3モデル
 西浦博教授が2020年に開発したSIRモデルを再現したものである。人口を3つの年齢階層に分類していることから、ここではAge3モデルと呼んでいる。
 
